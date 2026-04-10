@@ -1,0 +1,81 @@
+uniqlo:
+  # Country/language path segment used to build the Uniqlo API URL.
+  # Examples: "de/de" (Germany), "uk/en" (UK), "fr/fr" (France)
+  country: "de/de"
+
+  # How often to poll the Uniqlo API (in minutes)
+  check_interval_minutes: 15
+
+filters:
+  # Which genders to include. Valid values: men, women, unisex, kids, baby
+  gender:
+    - men
+    - women
+    - unisex
+
+  # Minimum discount percentage to surface a deal. Default: 50
+  min_sale_percentage: 50
+
+  # Size filters — only show items available in at least one of these sizes.
+  # Each item's stock is verified in real-time; out-of-stock sizes are excluded
+  # and the notification URL points to a colour that is actually purchasable.
+  # Omit or leave a category empty to skip filtering for it.
+  #
+  # Clothing: XXS, XS, S, M, L, XL, XXL, 3XL
+  # Pants:    22inch – 40inch  (women start at 22inch, men at 28inch)
+  # Shoes:    37, 37.5, 38, 38.5, 39, 40, 41, 41.5, 42, 42.5, 43
+  # One Size: bags, hats, accessories, etc.
+  sizes:
+    clothing:
+      - M
+    pants:
+      - "30inch"
+      - "31inch"
+      - "32inch"
+    shoes:
+      - "42"
+      - "42.5"
+    one_size: true
+
+  # Full Uniqlo product URLs to always include when available in stock,
+  # even if the item is not on sale.  The colour and size from each URL are
+  # preferred during stock verification, and the watched size is included
+  # even when it falls outside your size filter.
+  watched_urls:
+    - "https://www.uniqlo.com/de/de/products/E483049-000/00?colorDisplayCode=70&sizeDisplayCode=003"
+    - "https://www.uniqlo.com/de/de/products/E469830-000/00?colorDisplayCode=09&sizeDisplayCode=003"
+    - "https://www.uniqlo.com/de/de/products/E482815-000/00?colorDisplayCode=38&sizeDisplayCode=360"
+    - "https://www.uniqlo.com/de/de/products/E482815-000/00?colorDisplayCode=09&sizeDisplayCode=360"
+    - "https://www.uniqlo.com/de/de/products/E483045-000/00?colorDisplayCode=70&sizeDisplayCode=003"
+
+notifications:
+  # Preview modes — generate local previews of matched deals.
+  # These work alongside real channels, so you can preview AND send.
+  # Also available via CLI: --preview-cli / --preview-html
+  preview_cli: false   # print deals to the terminal (text)
+  preview_html: false  # generate an HTML report and open it in the browser (with images)
+  # Notification mode:
+  #   "all_then_new" — send ALL matching deals on the first check after startup,
+  #                     then only new variants on subsequent checks. (default)
+  #   "new_deals"    — only deals with at least one unseen product:color:size
+  #                     variant. State persisted to .seen_variants.json so
+  #                     restarts don't re-trigger already-seen deals.
+  #   "every_check"  — send ALL matching deals every time (useful for digests).
+  notify_on: all_then_new
+
+  channels:
+    telegram:
+      enabled: false
+      bot_token: "${TELEGRAM_BOT_TOKEN}"
+      chat_id: "${TELEGRAM_CHAT_ID}"
+
+    email:
+      enabled: true
+      smtp_host: "smtp.gmail.com"
+      smtp_port: 587
+      use_tls: true
+      smtp_user: "${SMTP_USER}"
+      smtp_password: "${SMTP_PASSWORD}"
+      from_address: "${SMTP_FROM}"
+      to_addresses:
+        - "${SMTP_TO}"

@@ -1,0 +1,130 @@
+"""Pydantic models for Uniqlo API responses and application-level sale items."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Uniqlo Commerce API response models (partial — only fields we need)
+# ---------------------------------------------------------------------------
+
+
+class UniqloPrice(BaseModel):
+    value: float
+    currency: dict[str, str] | None = None
+
+
+class UniqloPriceInfo(BaseModel):
+    base: UniqloPrice
+    promo: UniqloPrice | None = None
+    is_dual_price: bool = Field(default=False, alias="isDualPrice")
+
+
+class UniqloSize(BaseModel):
+    name: str
+    display_code: str = Field(default="", alias="displayCode")
+
+
+class UniqloImageDetail(BaseModel):
+    image: str = ""
+
+
+class UniqloProduct(BaseModel, populate_by_name=True):
+    """Represents a single product from the Uniqlo API."""
+
+    product_id: str = Field(alias="productId")
+    name: str = ""
+    gender_category: str = Field(default="", alias="genderCategory")
+    prices: UniqloPriceInfo
+    sizes: list[UniqloSize] = Field(default_factory=list)
+    images: dict[str, Any] = Field(default_factory=dict)
+    price_group: str = Field(default="", alias="priceGroup")
+    rating: dict[str, Any] = Field(default_factory=dict)
+    representative: dict[str, Any] = Field(default_factory=dict)
+    representative_color_display_code: str = Field(
+        default="", alias="representativeColorDisplayCode"
+    )
+
+    @property
+    def is_on_sale(self) -> bool:
+        return self.prices.promo is not None and self.prices.promo.value < self.prices.base.value
+
+    @property
+    def discount_percentage(self) -> float:
+        if not self.is_on_sale or self.prices.base.value == 0:
+            return 0.0
+        promo = self.prices.promo
+        if promo is None:
+            return 0.0
+        return round((self.prices.base.value - promo.value) / self.prices.base.value * 100, 1)
+
+    @property
+    def main_image_url(self) -> str | None:
+        main_images: dict[str, Any] = self.images.get("main", {})
+        for _color_code, detail in main_images.items():
+            if isinstance(detail, dict) and "image" in detail:
+                return detail["image"]
+        return None
+
+    @property
+    def size_names(self) -> list[str]:
+        return [s.name for s in self.sizes]
+
+    @property
+    def currency_symbol(self) -> str:
+        if self.prices.base.currency:
+            return self.prices.base.currency.get("symbol", "€")
+        return "€"
+
+
+class UniqloPagination(BaseModel):
+    total: int = 0
+    offset: int = 0
+    count: int = 0
+
+
+class UniqloApiResult(BaseModel):
+    items: list[UniqloProduct] = Field(default_factory=list)
+    pagination: UniqloPagination = Field(default_factory=UniqloPagination)
+
+
+class UniqloApiResponse(BaseModel):
+    status: str = ""
+    result: UniqloApiResult = Field(default_factory=UniqloApiResult)
+
+
+# ---------------------------------------------------------------------------
+# Application-level models
+# ---------------------------------------------------------------------------
+
+
+class SaleItem(BaseModel):
+    """A product that passed all configured filters."""
+
+    product_id: str
+    name: str
+    original_price: float
+    sale_price: float
+    currency_symbol: str = "€"
+    discount_percentage: float
+    gender: str
+    available_sizes: list[str]
+    image_url: str | None = None
+    product_urls: list[str] = Field(default_factory=list)
+    price_group: str = ""
+    rating_average: float | None = None
+    rating_count: int | None = None
+    is_watched: bool = False
+
+
+class SaleCheckResult(BaseModel):
+    """Result of a single sale-check run."""
+
+    checked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    total_products_scanned: int = 0
+    total_on_sale: int = 0
+    matching_deals: list[SaleItem] = Field(default_factory=list)
+    new_deals: list[SaleItem] = Field(default_factory=list)

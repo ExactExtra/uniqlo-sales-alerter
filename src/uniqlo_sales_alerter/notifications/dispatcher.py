@@ -1,0 +1,91 @@
+"""Notification dispatcher — routes alerts to all enabled channels."""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from uniqlo_sales_alerter.models.products import SaleItem
+from uniqlo_sales_alerter.notifications.base import Notifier
+from uniqlo_sales_alerter.notifications.console import ConsoleNotifier
+from uniqlo_sales_alerter.notifications.email import EmailNotifier
+from uniqlo_sales_alerter.notifications.html_report import HtmlReportNotifier
+from uniqlo_sales_alerter.notifications.telegram import TelegramNotifier
+
+if TYPE_CHECKING:
+    from uniqlo_sales_alerter.config import AppConfig
+
+logger = logging.getLogger(__name__)
+
+
+class NotificationDispatcher:
+    """Creates notifiers from config and dispatches deals to all enabled channels.
+
+    Failures in one channel are logged but never prevent other channels from
+    being tried.
+    """
+
+    def __init__(self, config: AppConfig) -> None:
+        self._config = config
+        self._notifiers: list[Notifier] = self._build_notifiers(config)
+
+    @staticmethod
+    def _build_notifiers(config: AppConfig) -> list[Notifier]:
+        ncfg = config.notifications
+        channels = ncfg.channels
+        notifiers: list[Notifier] = []
+
+        tg = TelegramNotifier(channels.telegram)
+        notifiers.append(tg)
+        logger.info("Registered TelegramNotifier (enabled=%s)", tg.is_enabled())
+
+        em = EmailNotifier(channels.email)
+        notifiers.append(em)
+        logger.info("Registered EmailNotifier (enabled=%s)", em.is_enabled())
+        if not em.is_enabled():
+            cfg = channels.email
+            reasons: list[str] = []
+            if not cfg.enabled:
+                reasons.append("enabled: false")
+            if not cfg.smtp_host:
+                reasons.append("smtp_host is empty")
+            if not cfg.from_address:
+                reasons.append("from_address is empty")
+            if not cfg.to_addresses:
+                reasons.append("to_addresses is empty")
+            logger.info("Email disabled because: %s", ", ".join(reasons))
+
+        if ncfg.preview_cli:
+            notifiers.append(ConsoleNotifier(enabled=True))
+            logger.info("Registered ConsoleNotifier (preview_cli)")
+        if ncfg.preview_html:
+            notifiers.append(HtmlReportNotifier(enabled=True))
+            logger.info("Registered HtmlReportNotifier (preview_html)")
+
+        return notifiers
+
+    def register(self, notifier: Notifier) -> None:
+        """Register an additional notification channel at runtime."""
+        self._notifiers.append(notifier)
+
+    async def dispatch(self, deals: list[SaleItem]) -> None:
+        """Send *deals* to every enabled notification channel."""
+        if not deals:
+            logger.debug("No deals to dispatch — skipping")
+            return
+
+        logger.info(
+            "Dispatching %d deal(s) to %d registered channel(s)",
+            len(deals), len(self._notifiers),
+        )
+
+        for notifier in self._notifiers:
+            name = type(notifier).__name__
+            if not notifier.is_enabled():
+                logger.debug("%s — skipped (disabled)", name)
+                continue
+            try:
+                await notifier.send(deals)
+                logger.info("Sent %d deal(s) via %s", len(deals), name)
+            except Exception:
+                logger.exception("Notification channel %s failed", name)
