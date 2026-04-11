@@ -2,6 +2,8 @@
 
 A Python web server that monitors [Uniqlo](https://www.uniqlo.com) sales and notifies you when items match your criteria. It talks directly to Uniqlo's internal Commerce API — no browser automation or scraping required.
 
+![Mail report](docs/img/mail.png)
+
 ## Features
 
 - **Periodic sale monitoring** — polls the Uniqlo catalogue on a configurable interval
