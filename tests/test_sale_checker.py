@@ -581,6 +581,36 @@ class TestSaleCheckerCheck:
             assert "L" in result2.new_deals[0].available_sizes
 
     @pytest.mark.asyncio
+    async def test_price_change_detected_as_new(
+        self, sale_config: AppConfig, tmp_path: Path,
+    ):
+        """When a product's discount percentage changes, it counts as a new deal."""
+        state_file = tmp_path / ".seen_variants.json"
+        products_v1 = [_product(_raw("E001", base=100, promo=40))]  # 60% off
+        products_v2 = [_product(_raw("E001", base=100, promo=30))]  # 70% off
+
+        checker = SaleChecker(sale_config, state_file=state_file)
+        with (
+            patch.object(
+                checker._client,
+                "fetch_sale_products",
+                new_callable=AsyncMock,
+            ) as mock,
+            noop_verify(checker),
+            noop_watched_fetch(checker),
+        ):
+            mock.return_value = products_v1
+            result1 = await checker.check()
+            assert len(result1.new_deals) == 1
+
+            mock.return_value = products_v2
+            result2 = await checker.check()
+            assert len(result2.new_deals) == 1, (
+                "A price change should make the deal new again"
+            )
+            assert result2.new_deals[0].discount_percentage == 70.0
+
+    @pytest.mark.asyncio
     async def test_corrupt_state_file_starts_fresh(
         self, sale_config: AppConfig, tmp_path: Path,
     ):
@@ -609,7 +639,7 @@ class TestSaleCheckerCheck:
     async def test_state_file_format(
         self, sale_config: AppConfig, tmp_path: Path,
     ):
-        """The state file contains a JSON object with variant keys as product:color:size."""
+        """The state file contains a JSON object with variant keys as product:color:size:discount."""
         state_file = tmp_path / ".seen_variants.json"
         products = [_product(_raw("E001", sizes=["M"]))]
 
@@ -632,7 +662,7 @@ class TestSaleCheckerCheck:
         assert len(data["variants"]) > 0
         for key in data["variants"]:
             parts = key.split(":")
-            assert len(parts) == 3, f"Expected product:color:size, got {key}"
+            assert len(parts) == 4, f"Expected product:color:size:discount, got {key}"
 
 
 class TestAllThenNewMode:
@@ -881,7 +911,7 @@ class TestVariantKeys:
             price_group="00",
         )
         keys = SaleChecker._variant_keys(item)
-        assert keys == {"E001:09:004", "E001:09:005"}
+        assert keys == {"E001:09:004:60", "E001:09:005:60"}
 
     def test_different_colors_same_size(self):
         item = SaleItem(
@@ -899,7 +929,7 @@ class TestVariantKeys:
             price_group="00",
         )
         keys = SaleChecker._variant_keys(item)
-        assert keys == {"E001:01:004", "E001:09:004"}
+        assert keys == {"E001:01:004:60", "E001:09:004:60"}
 
     def test_falls_back_to_product_id_when_no_urls(self):
         item = SaleItem(
@@ -914,4 +944,4 @@ class TestVariantKeys:
             price_group="00",
         )
         keys = SaleChecker._variant_keys(item)
-        assert keys == {"E001"}
+        assert keys == {"E001:60"}

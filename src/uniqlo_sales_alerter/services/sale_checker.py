@@ -100,12 +100,15 @@ class SaleChecker:
 
     @staticmethod
     def _variant_keys(item: SaleItem) -> set[str]:
-        """Extract ``product_id:color:size`` keys from a SaleItem's URLs.
+        """Extract ``product_id:color:size:discount`` keys from a SaleItem's URLs.
 
         Each URL contains ``colorDisplayCode`` and ``sizeDisplayCode`` query
-        parameters that uniquely identify a purchasable variant.  Falls back to
-        the bare ``product_id`` when no URL parameters are available.
+        parameters that uniquely identify a purchasable variant.  The discount
+        percentage is appended so that a price change on an existing variant is
+        detected as a new deal.  Falls back to ``product_id:discount`` when no
+        URL parameters are available.
         """
+        discount = f"{item.discount_percentage:g}"
         keys: set[str] = set()
         for url in item.product_urls:
             parsed = urlparse(url)
@@ -113,9 +116,9 @@ class SaleChecker:
             color = params.get("colorDisplayCode", [""])[0]
             size = params.get("sizeDisplayCode", [""])[0]
             if color and size:
-                keys.add(f"{item.product_id}:{color}:{size}")
+                keys.add(f"{item.product_id}:{color}:{size}:{discount}")
         if not keys:
-            keys.add(item.product_id)
+            keys.add(f"{item.product_id}:{discount}")
         return keys
 
     async def check(self) -> SaleCheckResult:

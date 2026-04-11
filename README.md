@@ -20,7 +20,7 @@ The server reverse-engineers Uniqlo's internal Commerce API (the same one their 
 4. **Verifies real-time stock per variant** — for each matching product, fetches the stock endpoint to check which colour×size combinations are actually purchasable online. Sizes that are out of stock are excluded. Products where all matching sizes are sold out are dropped entirely.
 5. Generates **direct variant URLs** pointing to an **in-stock colour** for each matching size (e.g. `…/E479257-000/00?colorDisplayCode=07&sizeDisplayCode=004`). The colour with the highest stock quantity is preferred, so links lead to purchasable variants.
 6. Caches the results for fast API responses.
-7. Compares current variants against a **persistent state file** (`.seen_variants.json`) that tracks every `product:color:size` combination seen so far. Deals with at least one previously unseen variant are flagged as "new". The state survives server restarts.
+7. Compares current variants against a **persistent state file** (`.seen_variants.json`) that tracks every `product:color:size:discount%` combination seen so far. Deals with at least one previously unseen combination are flagged as "new" — this covers new products, new sizes/colours, **and** price changes. The state survives server restarts.
 8. Sends notifications for new deals via enabled channels. Preview modes (CLI/HTML) run alongside real notifications when active.
 
 ## Quick Start
@@ -270,8 +270,8 @@ The `notify_on` setting in `config.yaml` controls which deals are included in ea
 
 | Mode | Config value | Behaviour |
 |------|-------------|-----------|
-| **All then new** *(default)* | `notify_on: all_then_new` | Sends **all** matching deals on the **first check after startup**, then only deals with at least one previously unseen variant on subsequent checks. On every restart the initial "full" notification is sent again. |
-| **New deals only** | `notify_on: new_deals` | Only deals with at least one unseen `product:color:size` variant. The state file is loaded on startup, so restarts **do not** re-trigger already-seen deals. |
+| **All then new** *(default)* | `notify_on: all_then_new` | Sends **all** matching deals on the **first check after startup**, then only deals with at least one change on subsequent checks (see [What triggers a new notification](#what-triggers-a-new-notification) below). On every restart the initial "full" notification is sent again. |
+| **New deals only** | `notify_on: new_deals` | Only deals with at least one change since the last check. The state file is loaded on startup, so restarts **do not** re-trigger already-seen deals. |
 | **All matching deals** | `notify_on: every_check` | **Every** matching deal is sent on every check. Useful for daily digests or full overviews. |
 
 ```yaml
@@ -281,10 +281,10 @@ notifications:
 
 ### How "new deals" tracking works
 
-The system maintains a **local state file** (`.seen_variants.json` in the project root) that stores every `product_id:colorDisplayCode:sizeDisplayCode` combination seen in the previous check. On each run:
+The system maintains a **local state file** (`.seen_variants.json` in the project root) that stores every `product_id:colorDisplayCode:sizeDisplayCode:discount%` combination seen in the previous check. On each run:
 
-1. After filtering and stock verification, variant keys are extracted from each deal's URLs.
-2. A deal is "new" if it has **at least one variant** not present in the stored set — this means a product that gains a new available size or colour is re-flagged as new.
+1. After filtering and stock verification, variant keys are extracted from each deal's URLs together with the current discount percentage.
+2. A deal is "new" if it has **at least one variant** not present in the stored set — this means a product that gains a new available size or colour, **or whose discount percentage changes**, is re-flagged as new.
 3. The state file is updated with the current set of variants.
 
 In `all_then_new` mode (the default), the saved state is **not loaded on startup** — the set starts empty, so the first check treats everything as new. After that first check the state is saved normally and subsequent checks only flag genuinely new variants. On restart, the cycle repeats.
@@ -294,6 +294,21 @@ In `new_deals` mode, the saved state **is loaded on startup**, so previously see
 The state file is created automatically and is git-ignored by default.
 
 The mode applies to all notification channels (Telegram, Email) and to preview-via-config. CLI previews (`--preview-cli` / `--preview-html`) always show all matching deals since there is no previous check to diff against.
+
+### What triggers a new notification
+
+In `all_then_new` and `new_deals` modes, a deal is included in the notification when **any** of the following changes since the last check:
+
+| Change | Example | Triggers notification? |
+|--------|---------|:----------------------:|
+| **New product appears** | A product you've never seen before goes on sale | Yes |
+| **New size becomes available** | A product gains size L that was previously out of stock | Yes |
+| **New colour becomes available** | A new colour variant comes into stock | Yes |
+| **Discount percentage changes** | A product goes from 50% off to 60% off | Yes |
+| **Product goes back on sale** | A product that left the sale list re-appears | Yes |
+| No change (same sizes, colours, and price) | Product is still on sale at the same discount | No |
+
+This applies equally to **regular sale items** and **watched items**. A watched product that stays in stock at the same price with the same sizes will not re-trigger a notification — only a meaningful change (new size, new colour, or a price change) will.
 
 ## Notifications
 
@@ -373,6 +388,7 @@ You can run the alerter as a systemd service so it starts automatically on boot,
 ```bash
 cd /opt
 sudo git clone https://github.com/kequach/uniqlo-sales-alerter.git
+sudo chown -R $(whoami):$(whoami) uniqlo-sales-alerter
 cd uniqlo-sales-alerter
 
 python3 -m venv .venv
