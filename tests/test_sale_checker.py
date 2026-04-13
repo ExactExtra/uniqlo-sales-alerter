@@ -892,6 +892,66 @@ class TestWatchedProductFetch:
         assert ids_requested.count("E777-001") == 1
 
 
+class TestUnknownDiscountFiltering:
+    """Tests for items where promo == base (limited countries like US/CA/JP/KR/SG)."""
+
+    @pytest.fixture()
+    def checker(self, sale_config: AppConfig) -> SaleChecker:
+        return SaleChecker(sale_config)
+
+    def test_unknown_discount_items_pass_through(self, checker: SaleChecker):
+        """Items with promo == base should not be dropped."""
+        products = [_product(_raw("E001", base=50, promo=50))]
+        result = checker._apply_filters(products)
+        assert len(result) == 1
+        assert result[0].product_id == "E001"
+
+    def test_unknown_discount_bypasses_min_percentage(self, checker: SaleChecker):
+        """Items without a known discount bypass min_sale_percentage."""
+        products = [_product(_raw("E001", base=50, promo=50))]
+        result = checker._apply_filters(products)
+        assert len(result) == 1
+        assert result[0].discount_percentage == 0
+
+    def test_unknown_discount_has_known_discount_false(self, checker: SaleChecker):
+        products = [_product(_raw("E001", base=50, promo=50))]
+        result = checker._apply_filters(products)
+        assert result[0].has_known_discount is False
+
+    def test_known_discount_has_known_discount_true(self, checker: SaleChecker):
+        products = [_product(_raw("E001", base=100, promo=40))]
+        result = checker._apply_filters(products)
+        assert result[0].has_known_discount is True
+
+    def test_unknown_discount_still_filtered_by_gender(self, checker: SaleChecker):
+        products = [_product(_raw("E001", base=50, promo=50, gender="WOMEN"))]
+        result = checker._apply_filters(products)
+        assert len(result) == 0
+
+    def test_unknown_discount_still_filtered_by_size(self, checker: SaleChecker):
+        products = [_product(_raw("E001", base=50, promo=50, sizes=["XXS"]))]
+        result = checker._apply_filters(products)
+        assert len(result) == 0
+
+    def test_mixed_known_and_unknown(self, checker: SaleChecker):
+        """Known-discount items still honour min_sale_percentage."""
+        products = [
+            _product(_raw("E001", base=100, promo=100)),  # unknown
+            _product(_raw("E002", base=100, promo=80)),   # 20% — below 40% min
+            _product(_raw("E003", base=100, promo=50)),   # 50% — passes
+        ]
+        result = checker._apply_filters(products)
+        pids = {r.product_id for r in result}
+        assert pids == {"E001", "E003"}
+
+    def test_unknown_discount_no_promo(self, checker: SaleChecker):
+        """Items with promo=None are also treated as unknown discount."""
+        products = [_product(_raw("E001", base=50, promo=None))]
+        result = checker._apply_filters(products)
+        assert len(result) == 1
+        assert result[0].has_known_discount is False
+
+
 class TestVariantKeys:
     """Unit tests for the static _variant_keys helper."""
 
@@ -945,3 +1005,37 @@ class TestVariantKeys:
         )
         keys = SaleChecker._variant_keys(item)
         assert keys == {"E001:60"}
+
+    def test_unknown_discount_uses_sale_suffix(self):
+        item = SaleItem(
+            product_id="E001",
+            name="Test",
+            original_price=50,
+            sale_price=50,
+            discount_percentage=0,
+            gender="MEN",
+            available_sizes=["M"],
+            product_urls=[
+                "https://x.com/products/E001/00?colorDisplayCode=09&sizeDisplayCode=004",
+            ],
+            price_group="00",
+            has_known_discount=False,
+        )
+        keys = SaleChecker._variant_keys(item)
+        assert keys == {"E001:09:004:sale"}
+
+    def test_unknown_discount_fallback_uses_sale_suffix(self):
+        item = SaleItem(
+            product_id="E001",
+            name="Test",
+            original_price=50,
+            sale_price=50,
+            discount_percentage=0,
+            gender="MEN",
+            available_sizes=["M"],
+            product_urls=[],
+            price_group="00",
+            has_known_discount=False,
+        )
+        keys = SaleChecker._variant_keys(item)
+        assert keys == {"E001:sale"}

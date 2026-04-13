@@ -51,6 +51,16 @@ class TestAppConfig:
         assert cfg.filters.sizes.one_size is False
         assert cfg.filters.sizes.shoes == []
 
+    def test_sale_paths_default_empty(self):
+        cfg = AppConfig()
+        assert cfg.uniqlo.sale_paths == []
+
+    def test_sale_paths_configured(self):
+        cfg = AppConfig.model_validate({
+            "uniqlo": {"country": "sg/en", "sale_paths": ["5855", "5856"]},
+        })
+        assert cfg.uniqlo.sale_paths == ["5855", "5856"]
+
 
 class TestLoadConfig:
     def test_load_from_yaml(self, tmp_path: Path):

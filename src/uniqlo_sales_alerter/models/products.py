@@ -123,6 +123,7 @@ class SaleItem(BaseModel):
     rating_average: float | None = None
     rating_count: int | None = None
     is_watched: bool = False
+    has_known_discount: bool = True
 
 
 class SaleCheckResult(BaseModel):

@@ -30,6 +30,19 @@ def _build_report(deals: list[SaleItem], generated_at: datetime) -> str:
             for sz, url in zip(deal.available_sizes, deal.product_urls)
         ) or ", ".join(deal.available_sizes)
 
+        if deal.has_known_discount:
+            price_row = (
+                f'<span class="price-old">{deal.currency_symbol}{deal.original_price:.2f}</span>'
+                f'<span class="arrow">&rarr;</span>'
+                f'<span class="price-sale">{deal.currency_symbol}{deal.sale_price:.2f}</span>'
+                f'<span class="discount">-{deal.discount_percentage:.0f}%</span>'
+            )
+        else:
+            price_row = (
+                f'<span class="price-sale">{deal.currency_symbol}{deal.sale_price:.2f}</span>'
+                f'<span class="discount">Sale</span>'
+            )
+
         cards.append(f"""
         <div class="card">
             <div class="card-img">{img}</div>
@@ -38,10 +51,7 @@ def _build_report(deals: list[SaleItem], generated_at: datetime) -> str:
                     <span class="index">{i}.</span> {deal.name} {watched}
                 </div>
                 <div class="price-row">
-                    <span class="price-old">{deal.currency_symbol}{deal.original_price:.2f}</span>
-                    <span class="arrow">&rarr;</span>
-                    <span class="price-sale">{deal.currency_symbol}{deal.sale_price:.2f}</span>
-                    <span class="discount">-{deal.discount_percentage:.0f}%</span>
+                    {price_row}
                 </div>
                 <div class="sizes">{size_links}</div>
             </div>

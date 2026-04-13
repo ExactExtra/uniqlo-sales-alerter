@@ -121,6 +121,8 @@ uniqlo:
   country: "de/de"
 ```
 
+**Full support** — discount percentage, original vs. sale price, all filters:
+
 | Country | Value | | Country | Value |
 |---------|-------|-|---------|-------|
 | Germany | `de/de` | | Australia | `au/en` |
@@ -134,7 +136,19 @@ uniqlo:
 | Denmark | `dk/en` | | | |
 | Sweden | `se/en` | | | |
 
-> **Not supported:** US, Canada, Japan, South Korea, and Singapore. These stores show a "Sale" label on their website, but behind the scenes they don't provide an original price to compare against — only the current (already reduced) price. Without knowing what the item cost before, the alerter has no way to calculate a discount. This is a limitation of how Uniqlo's system works in those regions, not something that can be fixed on our end.
+**Limited support** — sale-flagged items only (no discount percentage):
+
+| Country | Value |
+|---------|-------|
+| United States | `us/en` |
+| Canada | `ca/en` |
+| Japan | `jp/ja` |
+| South Korea | `kr/ko` |
+| Singapore | `sg/en` |
+
+> **What does "limited support" mean?** These stores flag items as on sale, but their API does not expose the original (pre-sale) price — only the current price. This means the alerter cannot calculate how much an item is discounted, so notifications will show the current price with a "Sale" label instead of a percentage. The `min_sale_percentage` filter is automatically skipped for these countries; gender and size filters still work normally.
+
+**Singapore requires `sale_paths`** — Singapore organises most of its sale catalogue into category paths rather than flagging items individually. Without `sale_paths` configured, the alerter will only find a handful of items. See [Sale category paths](#sale-category-paths) below.
 
 ### Filters
 
@@ -144,7 +158,7 @@ filters:
     - men          # options: men, women, unisex, kids, baby
     - women
 
-  min_sale_percentage: 50   # only show items at least 50% off
+  min_sale_percentage: 50   # only show items at least 50% off (ignored for limited countries)
 
   sizes:
     clothing:      # XXS, XS, S, M, L, XL, XXL, 3XL
@@ -186,6 +200,39 @@ filters:
 ```
 
 You'll be notified whenever the item is in stock, even without a discount.
+
+### Sale category paths
+
+Some countries (notably Singapore) organise their sale items into category paths instead of flagging them. Without configuring `sale_paths`, the alerter will miss most sale items for these countries.
+
+To find the path IDs for your country, open the Uniqlo sale page and look at the URL:
+
+```
+https://www.uniqlo.com/sg/en/feature/sale/men?path=5856&flagCodes=discount
+                                                    ^^^^
+```
+
+Add the path IDs to your config:
+
+```yaml
+uniqlo:
+  country: "sg/en"
+  sale_paths: ["5855", "5856", "5857", "5858"]
+```
+
+<details>
+<summary><strong>Known Singapore paths (as of 2026)</strong></summary>
+
+| Path | Category |
+|------|----------|
+| `5855` | All sale |
+| `5856` | Men |
+| `5857` | Women |
+| `5858` | Kids |
+
+</details>
+
+> You can specify as many paths as you like. Items are deduplicated automatically.
 
 ### Email notifications (Gmail)
 
@@ -529,8 +576,8 @@ Register it in `notifications/dispatcher.py` or at runtime via `dispatcher.regis
 The server reverse-engineers Uniqlo's internal Commerce API (the same one their website uses). On each check it:
 
 1. Queries four API sources in parallel — `flagCodes=discount` and `flagCodes=limitedOffer` across both v5 and v3 API versions — and merges/deduplicates the results. Different regions use different versions and flags; this ensures full coverage.
-2. Verifies each item has a promo price lower than the base price.
-3. Computes the discount percentage and applies your filters (gender, sizes, min discount %).
+2. For full-support countries, verifies each item has a promo price lower than the base price and computes the discount percentage. For limited-support countries the API returns promo equal to base, so items are included with a "Sale" label instead of a percentage.
+3. Applies your filters (gender, sizes, min discount %). The `min_sale_percentage` filter is automatically skipped for items without a known discount.
 4. **Verifies real-time stock** — fetches the stock endpoint per product to check which colour×size combinations are purchasable. Out-of-stock sizes are excluded.
 5. Generates **direct variant URLs** pointing to an in-stock colour for each size. The colour with the highest stock quantity is preferred.
 6. Caches results for fast API responses.
@@ -544,6 +591,24 @@ pip install -e ".[dev]"              # install with dev dependencies
 python -m pytest tests/ -v           # run tests
 python -m ruff check src/ tests/     # lint
 ```
+
+### CI/CD
+
+A GitHub Actions workflow (`.github/workflows/docker-publish.yml`) runs on every push to `main`:
+
+1. **Test** — installs dependencies, runs the full test suite, and lints.
+2. **Build & push** — builds a multi-platform Docker image (`linux/amd64` + `linux/arm64`) and pushes it to Docker Hub.
+
+Images are tagged with `latest`, the branch name, and the commit SHA.
+
+The pipeline requires two repository secrets:
+
+| Secret | Value |
+|--------|-------|
+| `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://docs.docker.com/security/for-developers/access-tokens/) |
+
+Set these in **Settings → Secrets and variables → Actions** on your GitHub repository.
 
 ### Project structure
 

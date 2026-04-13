@@ -163,6 +163,111 @@ class TestFetchSaleProducts:
         assert len(result) == 1
 
 
+class TestSalePathsFetching:
+    """Tests for sale_paths-based product fetching (e.g. Singapore)."""
+
+    @staticmethod
+    def _mock_v3_empty(config: AppConfig):
+        empty = make_api_response([], total=0)
+        return respx.get(config.base_url_v3).mock(
+            return_value=httpx.Response(200, json=empty),
+        )
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_sale_paths_adds_products(self):
+        """Products from sale_paths are merged with flagCode results."""
+        cfg = AppConfig.model_validate({
+            "uniqlo": {"country": "sg/en", "sale_paths": ["5856"]},
+        })
+        client = UniqloClient(cfg)
+
+        flag_product = make_raw_product(product_id="E001", promo_price=10.0)
+        flag_resp = make_api_response([flag_product], total=1)
+        path_product = make_raw_product(product_id="E002")
+        path_resp = make_api_response([path_product], total=1)
+        empty = make_api_response([], total=0)
+
+        respx.get(cfg.base_url).side_effect = [
+            httpx.Response(200, json=flag_resp),   # flagCodes=discount
+            httpx.Response(200, json=empty),        # flagCodes=limitedOffer
+            httpx.Response(200, json=path_resp),   # path=5856
+        ]
+        self._mock_v3_empty(cfg)
+
+        result = await client.fetch_sale_products()
+        pids = {p.product_id for p in result}
+        assert pids == {"E001", "E002"}
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_sale_paths_deduplicates(self):
+        """Same product from flagCodes and sale_paths is not duplicated."""
+        cfg = AppConfig.model_validate({
+            "uniqlo": {"country": "sg/en", "sale_paths": ["5856"]},
+        })
+        client = UniqloClient(cfg)
+
+        product = make_raw_product(product_id="E001", promo_price=10.0)
+        resp = make_api_response([product], total=1)
+        empty = make_api_response([], total=0)
+
+        respx.get(cfg.base_url).side_effect = [
+            httpx.Response(200, json=resp),   # flagCodes=discount
+            httpx.Response(200, json=empty),  # flagCodes=limitedOffer
+            httpx.Response(200, json=resp),   # path=5856
+        ]
+        self._mock_v3_empty(cfg)
+
+        result = await client.fetch_sale_products()
+        assert len(result) == 1
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_empty_sale_paths_no_extra_requests(
+        self, client: UniqloClient, config: AppConfig,
+    ):
+        """When sale_paths is empty, no extra API calls are made."""
+        empty = make_api_response([], total=0)
+        v5_route = respx.get(config.base_url).mock(
+            return_value=httpx.Response(200, json=empty),
+        )
+        self._mock_v3_empty(config)
+
+        await client.fetch_sale_products()
+
+        v5_urls = [str(call.request.url) for call in v5_route.calls]
+        assert not any("path=" in u for u in v5_urls)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_multiple_sale_paths(self):
+        """Multiple sale_paths each get their own request."""
+        cfg = AppConfig.model_validate({
+            "uniqlo": {"country": "sg/en", "sale_paths": ["5856", "5857"]},
+        })
+        client = UniqloClient(cfg)
+
+        p1 = make_raw_product(product_id="E001")
+        p2 = make_raw_product(product_id="E002")
+        empty = make_api_response([], total=0)
+
+        respx.get(cfg.base_url).side_effect = [
+            httpx.Response(200, json=empty),                    # flagCodes=discount
+            httpx.Response(200, json=empty),                    # flagCodes=limitedOffer
+            httpx.Response(200, json=make_api_response([p1])),  # path=5856
+            httpx.Response(200, json=make_api_response([p2])),  # path=5857
+        ]
+        self._mock_v3_empty(cfg)
+
+        result = await client.fetch_sale_products()
+        pids = {p.product_id for p in result}
+        assert pids == {"E001", "E002"}
+        await client.aclose()
+
+
 class TestFetchAllProducts:
     @pytest.mark.asyncio
     @respx.mock

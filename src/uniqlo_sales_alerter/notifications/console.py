@@ -17,11 +17,17 @@ def _c(code: str, text: str) -> str:
 def _format_deal(deal: SaleItem, index: int) -> str:
     watched = _c("33", " [WATCHED]") if deal.is_watched else ""
     header = _c("1", f"  {index}. {deal.name}") + watched
-    price_line = (
-        f"     {_c('9', f'{deal.currency_symbol}{deal.original_price:.2f}')}"
-        f" -> {_c('32;1', f'{deal.currency_symbol}{deal.sale_price:.2f}')}"
-        f"  {_c('32', f'(-{deal.discount_percentage:.0f}%)')}"
-    )
+    if deal.has_known_discount:
+        price_line = (
+            f"     {_c('9', f'{deal.currency_symbol}{deal.original_price:.2f}')}"
+            f" -> {_c('32;1', f'{deal.currency_symbol}{deal.sale_price:.2f}')}"
+            f"  {_c('32', f'(-{deal.discount_percentage:.0f}%)')}"
+        )
+    else:
+        price_line = (
+            f"     {_c('32;1', f'{deal.currency_symbol}{deal.sale_price:.2f}')}"
+            f"  {_c('32', '(Sale)')}"
+        )
     lines = [header, price_line]
     for size, url in zip(deal.available_sizes, deal.product_urls):
         lines.append(f"     {_c('36', size):>8s}  {url}")

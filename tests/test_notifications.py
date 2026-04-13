@@ -17,6 +17,14 @@ from uniqlo_sales_alerter.notifications.telegram import TelegramNotifier, _build
 
 from .conftest import sample_deal as _sample_deal
 
+_UNKNOWN_DISCOUNT_OVERRIDES = dict(
+    original_price=49.90,
+    sale_price=49.90,
+    discount_percentage=0,
+    has_known_discount=False,
+    currency_symbol="$",
+)
+
 
 class TestTelegramCaption:
     def test_basic_caption(self):
@@ -480,3 +488,60 @@ class TestHtmlReportNotifier:
 
         output = capsys.readouterr().out
         assert "No deals" in output
+
+
+class TestUnknownDiscountDisplay:
+    """Verify all formatters show 'Sale' instead of a percentage for unknown-discount items."""
+
+    def test_console_shows_sale_label(self):
+        from uniqlo_sales_alerter.notifications.console import _format_deal
+
+        deal = _sample_deal(**_UNKNOWN_DISCOUNT_OVERRIDES)
+        output = _format_deal(deal, 1)
+        assert "(Sale)" in output
+        assert "%" not in output
+        assert "->" not in output
+
+    def test_console_known_discount_shows_percentage(self):
+        from uniqlo_sales_alerter.notifications.console import _format_deal
+
+        deal = _sample_deal()
+        output = _format_deal(deal, 1)
+        assert "%" in output
+        assert "->" in output
+
+    def test_telegram_shows_sale_label(self):
+        deal = _sample_deal(**_UNKNOWN_DISCOUNT_OVERRIDES)
+        caption = _build_caption(deal)
+        assert "Sale" in caption
+        assert "~" not in caption
+
+    def test_telegram_known_discount_shows_strikethrough(self):
+        deal = _sample_deal()
+        caption = _build_caption(deal)
+        assert "~" in caption
+
+    def test_email_shows_sale_label(self):
+        deal = _sample_deal(**_UNKNOWN_DISCOUNT_OVERRIDES)
+        html = _build_html([deal])
+        assert "Sale" in html
+        assert "line-through" not in html
+
+    def test_email_known_discount_shows_strikethrough(self):
+        deal = _sample_deal()
+        html = _build_html([deal])
+        assert "line-through" in html
+
+    def test_html_report_shows_sale_label(self):
+        ts = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+        deal = _sample_deal(**_UNKNOWN_DISCOUNT_OVERRIDES)
+        html = _build_report([deal], ts)
+        assert ">Sale</span>" in html
+        assert 'class="price-old"' not in html
+
+    def test_html_report_known_discount_shows_percentage(self):
+        ts = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+        deal = _sample_deal()
+        html = _build_report([deal], ts)
+        assert "price-old" in html
+        assert "%" in html

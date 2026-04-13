@@ -47,6 +47,7 @@ def _resolve_env_vars(value: object) -> object:
 class UniqloConfig(BaseModel):
     country: str = "de/de"
     check_interval_minutes: int = Field(default=30, ge=1)
+    sale_paths: list[str] = Field(default_factory=list)
 
 
 class SizeFilters(BaseModel):

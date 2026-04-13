@@ -1,13 +1,30 @@
 uniqlo:
   # Country/language path segment used to build the Uniqlo API URL.
-  # Europe:       "de/de", "uk/en", "fr/fr", "es/es", "it/it",
-  #               "be/fr", "be/nl", "nl/nl", "dk/en", "se/en"
-  # Asia-Pacific: "au/en", "in/en", "id/en", "vn/vi", "ph/en",
-  #               "my/en", "th/en"
+  # Full support:    "de/de", "uk/en", "fr/fr", "es/es", "it/it",
+  #                  "be/fr", "be/nl", "nl/nl", "dk/en", "se/en",
+  #                  "au/en", "in/en", "id/en", "vn/vi", "ph/en",
+  #                  "my/en", "th/en"
+  # Limited support: "us/en", "ca/en", "jp/ja", "kr/ko", "sg/en"
+  #   Limited countries show sale-flagged items but don't expose the
+  #   original price, so discount percentages are unavailable and
+  #   min_sale_percentage is ignored.
   country: "de/de"
 
   # How often to poll the Uniqlo API (in minutes)
   check_interval_minutes: 15
+
+  # Optional: sale category path IDs to fetch from.
+  # Some countries (notably Singapore) organise their sale items into
+  # category paths rather than tagging them with flagCodes.  Without
+  # these IDs the alerter will only find a small fraction of sale items.
+  #
+  # To find your paths: open the sale page on uniqlo.com for your country
+  # and look at the URL — e.g. ".../feature/sale/men?path=5856" → "5856".
+  #
+  # Singapore paths (as of 2026):
+  #   sale_paths: ["5855", "5856", "5857", "5858"]
+  #   5855 = all sale, 5856 = men, 5857 = women, 5858 = kids
+  sale_paths: []
 
 filters:
   # Which genders to include. Valid values: men, women, unisex, kids, baby
@@ -17,6 +34,9 @@ filters:
     - unisex
 
   # Minimum discount percentage to surface a deal. Default: 50
+  # Only applies to countries where the API provides both original and sale
+  # prices.  For limited-support countries (US, CA, JP, KR, SG) this filter
+  # is ignored because no discount info is available.
   min_sale_percentage: 50
 
   # Size filters — only show items available in at least one of these sizes.

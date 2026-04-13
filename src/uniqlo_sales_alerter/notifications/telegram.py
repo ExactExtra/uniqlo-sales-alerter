@@ -23,9 +23,14 @@ def _escape_md(text: str) -> str:
 def _build_caption(deal: SaleItem) -> str:
     name = _escape_md(deal.name)
     sym = _escape_md(deal.currency_symbol)
-    original = _escape_md(f"{deal.original_price:.2f}")
     sale = _escape_md(f"{deal.sale_price:.2f}")
-    pct = _escape_md(f"{deal.discount_percentage:.0f}%")
+
+    if deal.has_known_discount:
+        original = _escape_md(f"{deal.original_price:.2f}")
+        pct = _escape_md(f"{deal.discount_percentage:.0f}%")
+        price_line = f"~{sym}{original}~ ➜ {sym}{sale} \\(\\-{pct}\\)"
+    else:
+        price_line = f"{sym}{sale} ✦ Sale"
 
     size_links = " \\| ".join(
         f"[{_escape_md(sz)}]({url})"
@@ -35,7 +40,7 @@ def _build_caption(deal: SaleItem) -> str:
     _repo = "https://github.com/kequach/uniqlo-sales-alerter"
     lines = [
         f"*{name}*",
-        f"~{sym}{original}~ ➜ {sym}{sale} \\(\\-{pct}\\)",
+        price_line,
         size_links or _escape_md(", ".join(deal.available_sizes)),
         f"\n[Uniqlo Sales Alerter]({_repo})",
     ]

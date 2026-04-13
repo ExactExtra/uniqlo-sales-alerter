@@ -31,20 +31,27 @@ def _build_html(deals: list[SaleItem]) -> str:
             f'<a href="{url}">{sz}</a>'
             for sz, url in zip(deal.available_sizes, deal.product_urls)
         ) or ", ".join(deal.available_sizes)
+        if deal.has_known_discount:
+            price_html = (
+                f'<span style="text-decoration:line-through;color:#999;">'
+                f'{deal.currency_symbol}{deal.original_price:.2f}</span> &rarr; '
+                f'<span style="color:#c0392b;font-weight:bold;">'
+                f'{deal.currency_symbol}{deal.sale_price:.2f}</span> '
+                f'<span style="color:#27ae60;">(-{deal.discount_percentage:.0f}%)</span>'
+            )
+        else:
+            price_html = (
+                f'<span style="color:#c0392b;font-weight:bold;">'
+                f'{deal.currency_symbol}{deal.sale_price:.2f}</span> '
+                f'<span style="color:#27ae60;font-weight:bold;">Sale</span>'
+            )
         rows.append(
             f"""
             <tr style="border-bottom:1px solid #eee;">
                 <td style="padding:12px;">{img_tag}</td>
                 <td style="padding:12px;">
                     <strong>{deal.name}</strong>{watched_badge}<br/>
-                    <span style="text-decoration:line-through;color:#999;">
-                        {deal.currency_symbol}{deal.original_price:.2f}
-                    </span>
-                    &rarr;
-                    <span style="color:#c0392b;font-weight:bold;">
-                        {deal.currency_symbol}{deal.sale_price:.2f}
-                    </span>
-                    <span style="color:#27ae60;">(-{deal.discount_percentage:.0f}%)</span><br/>
+                    {price_html}<br/>
                     <small>Sizes: {size_links}</small>
                 </td>
             </tr>"""

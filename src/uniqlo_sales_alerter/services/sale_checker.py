@@ -108,10 +108,12 @@ class SaleChecker:
         Each URL contains ``colorDisplayCode`` and ``sizeDisplayCode`` query
         parameters that uniquely identify a purchasable variant.  The discount
         percentage is appended so that a price change on an existing variant is
-        detected as a new deal.  Falls back to ``product_id:discount`` when no
-        URL parameters are available.
+        detected as a new deal.  For items without a known discount (some
+        countries don't expose the original price), the literal ``"sale"`` is
+        used instead so size/color changes still trigger notifications.
+        Falls back to ``product_id:suffix`` when no URL parameters are available.
         """
-        discount = f"{item.discount_percentage:g}"
+        suffix = f"{item.discount_percentage:g}" if item.has_known_discount else "sale"
         keys: set[str] = set()
         for url in item.product_urls:
             parsed = urlparse(url)
@@ -119,9 +121,9 @@ class SaleChecker:
             color = params.get("colorDisplayCode", [""])[0]
             size = params.get("sizeDisplayCode", [""])[0]
             if color and size:
-                keys.add(f"{item.product_id}:{color}:{size}:{discount}")
+                keys.add(f"{item.product_id}:{color}:{size}:{suffix}")
         if not keys:
-            keys.add(f"{item.product_id}:{discount}")
+            keys.add(f"{item.product_id}:{suffix}")
         return keys
 
     async def check(self) -> SaleCheckResult:
@@ -129,9 +131,11 @@ class SaleChecker:
         sale_products = await self._client.fetch_sale_products()
         logger.info("Fetched %d sale products from Uniqlo API", len(sale_products))
 
-        # The API already filters for sale items via flagCodes=discount,
-        # but we double-check promo prices to be safe.
-        sale_products = [p for p in sale_products if p.is_on_sale]
+        # Items come from flagCodes=discount / limitedOffer, plus any
+        # configured sale_paths (category IDs).  Some countries return
+        # promo == base or promo = None so is_on_sale is False, but the
+        # items are still genuinely on sale — we keep them and mark them
+        # as unknown-discount downstream.
 
         # Watched products are included whenever they're in stock, even when
         # not on sale.  Fetch any watched IDs missing from the sale results.
@@ -220,7 +224,12 @@ class SaleChecker:
     # ------------------------------------------------------------------
 
     def _apply_filters(self, products: list[UniqloProduct]) -> list[SaleItem]:
-        """Apply gender, size, and discount filters; always include watched products."""
+        """Apply gender, size, and discount filters; always include watched products.
+
+        Items without a known discount (``promo >= base``, common in US/CA/JP/
+        KR/SG) bypass the ``min_sale_percentage`` filter but still must pass
+        gender and size checks.
+        """
         cfg = self._config.filters
         watched = self._watched_ids
         gender_filter = {g.upper() for g in cfg.gender}
@@ -229,7 +238,11 @@ class SaleChecker:
 
         for product in products:
             is_watched = self._is_watched(product.product_id, watched)
-            passes_discount = product.discount_percentage >= cfg.min_sale_percentage
+            has_known_discount = product.is_on_sale
+            passes_discount = (
+                not has_known_discount
+                or product.discount_percentage >= cfg.min_sale_percentage
+            )
             passes_gender = self._matches_gender(product, gender_filter)
             passes_size = self._matches_size(product, all_size_names)
 
@@ -290,6 +303,7 @@ class SaleChecker:
             rating_average=rating.get("average"),
             rating_count=rating.get("count"),
             is_watched=is_watched,
+            has_known_discount=product.is_on_sale,
         )
 
     def _normalised_size_set(self) -> set[str]:
