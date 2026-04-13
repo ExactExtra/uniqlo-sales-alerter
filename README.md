@@ -65,19 +65,16 @@ uniqlo:
 | Netherlands | `nl/nl` |
 | Denmark | `dk/en` |
 | Sweden | `se/en` |
-| **Americas** | |
-| US | `us/en` |
-| Canada (EN) | `ca/en` |
-| Canada (FR) | `ca/fr` |
 | **Asia-Pacific** | |
-| Japan | `jp/ja` |
-| South Korea | `kr/ko` |
 | Australia | `au/en` |
 | India | `in/en` |
-| Singapore | `sg/en` |
-| Malaysia | `my/en` |
 | Indonesia | `id/en` |
 | Vietnam | `vn/vi` |
+| Philippines | `ph/en` |
+| Malaysia | `my/en` |
+| Thailand | `th/en` |
+
+> **Not supported:** US, Canada, Japan, South Korea, and Singapore. These stores show a "Sale" label on their website, but behind the scenes they don't provide an original price to compare against — only the current (already reduced) price. Without knowing what the item cost before, the alerter has no way to calculate a discount. This is a limitation of how Uniqlo's system works in those regions, not something that can be fixed on our end.
 
 ### 3. Configure your filters
 
@@ -518,7 +515,7 @@ If you see matching deals in the terminal, the config, API access, and (optional
 
 The server reverse-engineers Uniqlo's internal Commerce API (the same one their website's SPA uses). On each check it:
 
-1. Fetches only sale items via `flagCodes=discount` with pagination (100 items per page), avoiding the full catalogue.
+1. Queries four API sources in parallel — both `flagCodes=discount` and `flagCodes=limitedOffer` across both v5 and v3 API versions — and merges/deduplicates the results. Different Uniqlo regions use different API versions and flag codes; this ensures full coverage (e.g. Europe uses v5 `discount`, Thailand uses v3, Philippines uses v3 + v5 `limitedOffer`).
 2. Verifies each item has a promo price lower than the base price.
 3. Computes the discount percentage and applies your configured filters (gender, sizes, min discount %).
 4. **Verifies real-time stock per variant** — for each matching product, fetches the stock endpoint to check which colour×size combinations are actually purchasable online. Sizes that are out of stock are excluded. Products where all matching sizes are sold out are dropped entirely.

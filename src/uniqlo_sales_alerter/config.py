@@ -117,6 +117,10 @@ class AppConfig(BaseModel):
     def base_url(self) -> str:
         return f"https://www.uniqlo.com/{self.country_code}/api/commerce/v5/{self.lang_code}/products"
 
+    @property
+    def base_url_v3(self) -> str:
+        return f"https://www.uniqlo.com/{self.country_code}/api/commerce/v3/{self.lang_code}/products"
+
     _CLIENT_ID_COUNTRY_OVERRIDES: dict[str, str] = {"uk": "gb"}
 
     @property

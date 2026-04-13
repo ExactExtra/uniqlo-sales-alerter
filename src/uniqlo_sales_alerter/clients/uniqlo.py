@@ -45,6 +45,46 @@ def _retry_after(response: httpx.Response) -> float | None:
         return None
 
 
+def _normalize_v3_product(raw: dict[str, Any]) -> dict[str, Any]:
+    """Transform a v3 API product dict into the v5 schema expected by our models.
+
+    Key differences handled:
+    * ``prices.*.value`` — string in v3, float in v5
+    * ``isDualPrice``   — absent in v3
+    * ``genderCategory``— absent in v3 (``genderName`` used instead)
+    * ``images.main``   — list in v3, dict keyed by colorCode in v5
+    * ``priceGroup``    — absent in v3 (derived from ``plds`` or defaults to ``"00"``)
+    """
+    product = dict(raw)
+
+    # Gender: v3 has 'genderName' (title-case) instead of 'genderCategory' (UPPER)
+    gender = product.pop("genderName", "")
+    if product.get("unisexFlag") in ("1", 1, True):
+        gender = "UNISEX"
+    product.setdefault("genderCategory", gender.upper() if gender else "")
+
+    # Price group: extract from plds or default
+    plds = product.get("plds")
+    if plds and isinstance(plds, list) and plds:
+        display_code = plds[0].get("displayCode", "000")
+        product.setdefault("priceGroup", display_code.lstrip("0") or "00")
+    product.setdefault("priceGroup", "00")
+
+    # Images: v3 main is a list of {url, colorCode}; v5 is {colorCode: {image: url}}
+    images = product.get("images", {})
+    main_list = images.get("main")
+    if isinstance(main_list, list):
+        main_dict: dict[str, dict[str, Any]] = {}
+        for entry in main_list:
+            if isinstance(entry, dict) and "url" in entry:
+                cc = entry.get("colorCode", "00")
+                main_dict[cc] = {"image": entry["url"]}
+        images["main"] = main_dict
+        product["images"] = images
+
+    return product
+
+
 class UniqloClient:
     """Fetches product data from the Uniqlo Commerce API.
 
@@ -59,6 +99,7 @@ class UniqloClient:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._base_url = config.base_url
+        self._base_url_v3 = config.base_url_v3
         self._headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json",
@@ -178,8 +219,32 @@ class UniqloClient:
     # ------------------------------------------------------------------
 
     async def fetch_sale_products(self) -> list[UniqloProduct]:
-        """Fetch only products currently on sale (``flagCodes=discount``)."""
-        return await self._fetch_all(extra_params={"flagCodes": "discount"})
+        """Fetch products flagged as on sale.
+
+        Queries four sources in parallel and merges/deduplicates by product ID:
+        * v5 ``flagCodes=discount``    — European and most Asia-Pacific stores
+        * v5 ``flagCodes=limitedOffer`` — Philippines, Malaysia, Australia …
+        * v3 ``flagCodes=discount``    — Thailand, Philippines (v3-only stores)
+        * v3 ``flagCodes=limitedOffer`` — Thailand …
+        """
+        v5_disc, v5_ltd, v3_disc, v3_ltd = await asyncio.gather(
+            self._fetch_all(extra_params={"flagCodes": "discount"}),
+            self._fetch_all(extra_params={"flagCodes": "limitedOffer"}),
+            self._fetch_all_v3(extra_params={"flagCodes": "discount"}),
+            self._fetch_all_v3(extra_params={"flagCodes": "limitedOffer"}),
+        )
+        seen: set[str] = set()
+        merged: list[UniqloProduct] = []
+        for product in [*v5_disc, *v5_ltd, *v3_disc, *v3_ltd]:
+            if product.product_id not in seen:
+                seen.add(product.product_id)
+                merged.append(product)
+        logger.info(
+            "Fetched v5(%d disc + %d ltd) + v3(%d disc + %d ltd) "
+            "= %d unique sale candidates",
+            len(v5_disc), len(v5_ltd), len(v3_disc), len(v3_ltd), len(merged),
+        )
+        return merged
 
     async def fetch_all_products(self) -> list[UniqloProduct]:
         """Fetch every product from the catalogue, handling pagination."""
@@ -303,5 +368,68 @@ class UniqloClient:
         except Exception:
             logger.exception(
                 "Failed to fetch page at offset %d", offset,
+            )
+            return None
+
+    # ------------------------------------------------------------------
+    # v3 API support (used by Thailand, Philippines, …)
+    # ------------------------------------------------------------------
+
+    async def _fetch_all_v3(
+        self, extra_params: dict[str, str] | None = None,
+    ) -> list[UniqloProduct]:
+        """Paginate the v3 products endpoint and normalise each item to v5 format."""
+        all_products: list[UniqloProduct] = []
+        offset = 0
+
+        while True:
+            page = await self._fetch_page_v3(offset, extra_params)
+            if page is None:
+                break
+
+            all_products.extend(page.result.items)
+            total = page.result.pagination.total
+            offset += PAGE_SIZE
+
+            if offset >= total:
+                break
+
+        if all_products:
+            logger.info("Fetched %d products from v3 API", len(all_products))
+        return all_products
+
+    async def _fetch_page_v3(
+        self,
+        offset: int,
+        extra_params: dict[str, str] | None = None,
+    ) -> UniqloApiResponse | None:
+        params: dict[str, Any] = {
+            "offset": offset,
+            "limit": PAGE_SIZE,
+            "httpFailure": "true",
+        }
+        if extra_params:
+            params.update(extra_params)
+
+        try:
+            resp = await self._request(
+                self._base_url_v3,
+                params=params,
+                label=f"v3-page(offset={offset})",
+            )
+            data = resp.json()
+
+            if data.get("status") != "ok":
+                return None
+
+            items = data.get("result", {}).get("items", [])
+            data["result"]["items"] = [
+                _normalize_v3_product(item) for item in items
+            ]
+            return UniqloApiResponse.model_validate(data)
+
+        except Exception:
+            logger.debug(
+                "v3 page fetch at offset %d returned no results", offset,
             )
             return None

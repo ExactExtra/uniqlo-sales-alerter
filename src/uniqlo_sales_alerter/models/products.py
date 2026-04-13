@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Uniqlo Commerce API response models (partial — only fields we need)
@@ -15,6 +15,11 @@ from pydantic import BaseModel, Field
 class UniqloPrice(BaseModel):
     value: float
     currency: dict[str, str] | None = None
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _coerce_value(cls, v: Any) -> float:
+        return float(v)
 
 
 class UniqloPriceInfo(BaseModel):

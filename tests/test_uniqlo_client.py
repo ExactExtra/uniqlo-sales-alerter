@@ -11,6 +11,7 @@ import respx
 from uniqlo_sales_alerter.clients.uniqlo import (
     UniqloClient,
     _backoff_seconds,
+    _normalize_v3_product,
     _retry_after,
 )
 from uniqlo_sales_alerter.config import AppConfig
@@ -31,6 +32,16 @@ async def client(config: AppConfig):
 
 
 class TestFetchSaleProducts:
+    """Tests for the merged v5 + v3 sale product fetching."""
+
+    @staticmethod
+    def _mock_v3_empty(config: AppConfig):
+        """Register an empty-response mock for the v3 endpoint."""
+        empty = make_api_response([], total=0)
+        return respx.get(config.base_url_v3).mock(
+            return_value=httpx.Response(200, json=empty),
+        )
+
     @pytest.mark.asyncio
     @respx.mock
     async def test_fetch_sale_products(self, client: UniqloClient, config: AppConfig):
@@ -39,9 +50,12 @@ class TestFetchSaleProducts:
             for i in range(3)
         ]
         response = make_api_response(products, total=3)
-        respx.get(config.base_url).mock(
-            return_value=httpx.Response(200, json=response)
-        )
+        empty = make_api_response([], total=0)
+        respx.get(config.base_url).side_effect = [
+            httpx.Response(200, json=response),
+            httpx.Response(200, json=empty),
+        ]
+        self._mock_v3_empty(config)
 
         result = await client.fetch_sale_products()
         assert len(result) == 3
@@ -49,19 +63,104 @@ class TestFetchSaleProducts:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_sale_products_sends_flagcodes_param(
+    async def test_merges_discount_and_limited_offer(
+        self, client: UniqloClient, config: AppConfig,
+    ):
+        discount_products = [make_raw_product(product_id="E001", promo_price=10.0)]
+        limited_products = [make_raw_product(product_id="E002", promo_price=15.0)]
+        discount_resp = make_api_response(discount_products, total=1)
+        limited_resp = make_api_response(limited_products, total=1)
+        respx.get(config.base_url).side_effect = [
+            httpx.Response(200, json=discount_resp),
+            httpx.Response(200, json=limited_resp),
+        ]
+        self._mock_v3_empty(config)
+
+        result = await client.fetch_sale_products()
+        pids = {p.product_id for p in result}
+        assert pids == {"E001", "E002"}
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_deduplicates_across_flags(
+        self, client: UniqloClient, config: AppConfig,
+    ):
+        same_product = make_raw_product(product_id="E001", promo_price=10.0)
+        discount_resp = make_api_response([same_product], total=1)
+        limited_resp = make_api_response([same_product], total=1)
+        respx.get(config.base_url).side_effect = [
+            httpx.Response(200, json=discount_resp),
+            httpx.Response(200, json=limited_resp),
+        ]
+        self._mock_v3_empty(config)
+
+        result = await client.fetch_sale_products()
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_sale_products_sends_both_flagcodes(
         self, client: UniqloClient, config: AppConfig
     ):
         response = make_api_response([], total=0)
-        route = respx.get(config.base_url).mock(
+        v5_route = respx.get(config.base_url).mock(
             return_value=httpx.Response(200, json=response)
         )
+        v3_route = self._mock_v3_empty(config)
 
         await client.fetch_sale_products()
 
-        assert route.called
-        request = route.calls[0].request
-        assert "flagCodes=discount" in str(request.url)
+        v5_urls = [str(call.request.url) for call in v5_route.calls]
+        v3_urls = [str(call.request.url) for call in v3_route.calls]
+        all_urls = v5_urls + v3_urls
+        assert any("flagCodes=discount" in u for u in all_urls)
+        assert any("flagCodes=limitedOffer" in u for u in all_urls)
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_v3_products_merged_with_v5(
+        self, client: UniqloClient, config: AppConfig,
+    ):
+        """Products from the v3 API are merged with v5 results."""
+        v5_product = make_raw_product(product_id="E001", promo_price=10.0)
+        v5_resp = make_api_response([v5_product], total=1)
+        empty = make_api_response([], total=0)
+        respx.get(config.base_url).side_effect = [
+            httpx.Response(200, json=v5_resp),
+            httpx.Response(200, json=empty),
+        ]
+        v3_product = make_raw_product(product_id="E002", promo_price=15.0)
+        v3_resp = make_api_response([v3_product], total=1)
+        v3_empty = make_api_response([], total=0)
+        respx.get(config.base_url_v3).side_effect = [
+            httpx.Response(200, json=v3_resp),
+            httpx.Response(200, json=v3_empty),
+        ]
+
+        result = await client.fetch_sale_products()
+        pids = {p.product_id for p in result}
+        assert pids == {"E001", "E002"}
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_v3_dedup_with_v5(
+        self, client: UniqloClient, config: AppConfig,
+    ):
+        """Same product from v3 and v5 is deduplicated."""
+        product = make_raw_product(product_id="E001", promo_price=10.0)
+        resp = make_api_response([product], total=1)
+        empty = make_api_response([], total=0)
+        respx.get(config.base_url).side_effect = [
+            httpx.Response(200, json=resp),
+            httpx.Response(200, json=empty),
+        ]
+        respx.get(config.base_url_v3).side_effect = [
+            httpx.Response(200, json=resp),
+            httpx.Response(200, json=empty),
+        ]
+
+        result = await client.fetch_sale_products()
+        assert len(result) == 1
 
 
 class TestFetchAllProducts:
@@ -124,6 +223,9 @@ class TestErrorHandling:
         respx.get(config.base_url).mock(
             return_value=httpx.Response(200, json=error_resp)
         )
+        respx.get(config.base_url_v3).mock(
+            return_value=httpx.Response(200, json=error_resp)
+        )
 
         result = await client.fetch_sale_products()
         assert result == []
@@ -133,8 +235,16 @@ class TestErrorHandling:
     async def test_handles_http_500(
         self, client: UniqloClient, config: AppConfig
     ):
-        respx.get(config.base_url).mock(
-            return_value=httpx.Response(500)
+        empty = make_api_response([], total=0)
+        respx.get(config.base_url).side_effect = [
+            httpx.Response(500),
+            httpx.Response(500),
+            httpx.Response(500),
+            httpx.Response(200, json=empty),
+            httpx.Response(200, json=empty),
+        ]
+        respx.get(config.base_url_v3).mock(
+            return_value=httpx.Response(200, json=empty),
         )
 
         result = await client.fetch_sale_products()
@@ -306,18 +416,22 @@ class TestRateLimitHandling:
         """Pagination should also retry on 429."""
         products = [make_raw_product(product_id="E000001-000", promo_price=10.0)]
         ok_resp = make_api_response(products, total=1)
+        empty = make_api_response([], total=0)
 
         route = respx.get(config.base_url)
         route.side_effect = [
             httpx.Response(429, headers={"retry-after": "0"}),
+            httpx.Response(200, json=empty),
             httpx.Response(200, json=ok_resp),
         ]
+        respx.get(config.base_url_v3).mock(
+            return_value=httpx.Response(200, json=empty),
+        )
 
         with patch("uniqlo_sales_alerter.clients.uniqlo.asyncio.sleep"):
             result = await client.fetch_sale_products()
 
         assert len(result) == 1
-        assert route.call_count == 2
 
     @pytest.mark.asyncio
     @respx.mock
@@ -427,3 +541,98 @@ class TestBackoffHelpers:
     def test_retry_after_non_numeric(self):
         resp = httpx.Response(429, headers={"retry-after": "not-a-number"})
         assert _retry_after(resp) is None
+
+
+class TestNormalizeV3Product:
+    """Tests for _normalize_v3_product which adapts v3 data to v5 schema."""
+
+    def test_string_prices_become_floats(self):
+        raw = {
+            "productId": "E001",
+            "name": "Test",
+            "prices": {
+                "base": {"currency": {"code": "THB", "symbol": "THB"}, "value": "590.0000"},
+                "promo": {"currency": {"code": "THB", "symbol": "THB"}, "value": "490.0000"},
+            },
+            "images": {"main": []},
+            "sizes": [],
+            "genderName": "Men",
+            "unisexFlag": "0",
+        }
+        result = _normalize_v3_product(raw)
+        from uniqlo_sales_alerter.models.products import UniqloProduct
+        product = UniqloProduct.model_validate(result)
+        assert product.prices.base.value == 590.0
+        assert product.prices.promo is not None
+        assert product.prices.promo.value == 490.0
+
+    def test_gender_name_mapped_to_category(self):
+        raw = {
+            "productId": "E001",
+            "name": "Test",
+            "prices": {"base": {"value": "100"}, "promo": None},
+            "images": {"main": []},
+            "sizes": [],
+            "genderName": "Women",
+            "unisexFlag": "0",
+        }
+        result = _normalize_v3_product(raw)
+        assert result["genderCategory"] == "WOMEN"
+
+    def test_unisex_flag_overrides_gender(self):
+        raw = {
+            "productId": "E001",
+            "name": "Test",
+            "prices": {"base": {"value": "100"}, "promo": None},
+            "images": {"main": []},
+            "sizes": [],
+            "genderName": "Men",
+            "unisexFlag": "1",
+        }
+        result = _normalize_v3_product(raw)
+        assert result["genderCategory"] == "UNISEX"
+
+    def test_images_list_converted_to_dict(self):
+        raw = {
+            "productId": "E001",
+            "name": "Test",
+            "prices": {"base": {"value": "100"}, "promo": None},
+            "images": {
+                "main": [
+                    {"url": "https://example.com/img1.jpg", "colorCode": "09"},
+                    {"url": "https://example.com/img2.jpg", "colorCode": "01"},
+                ],
+            },
+            "sizes": [],
+            "genderName": "Men",
+        }
+        result = _normalize_v3_product(raw)
+        main = result["images"]["main"]
+        assert isinstance(main, dict)
+        assert main["09"]["image"] == "https://example.com/img1.jpg"
+        assert main["01"]["image"] == "https://example.com/img2.jpg"
+
+    def test_price_group_from_plds(self):
+        raw = {
+            "productId": "E001",
+            "name": "Test",
+            "prices": {"base": {"value": "100"}, "promo": None},
+            "images": {"main": []},
+            "sizes": [],
+            "genderName": "Men",
+            "plds": [{"displayCode": "000", "name": "-"}],
+        }
+        result = _normalize_v3_product(raw)
+        assert result["priceGroup"] == "00"
+
+    def test_default_price_group(self):
+        raw = {
+            "productId": "E001",
+            "name": "Test",
+            "prices": {"base": {"value": "100"}, "promo": None},
+            "images": {"main": []},
+            "sizes": [],
+            "genderName": "Men",
+        }
+        result = _normalize_v3_product(raw)
+        assert result["priceGroup"] == "00"
