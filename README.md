@@ -395,6 +395,89 @@ Each size links directly to a colour+size variant that is verified as in-stock. 
 
 The report includes product images from Uniqlo's CDN, strikethrough original prices with red sale prices and green discount badges, and clickable size chips that link directly to in-stock variants on uniqlo.com. Dark mode is supported via `prefers-color-scheme`. Reports are saved to `reports/` by default (git-ignored).
 
+## Deployment with Docker
+
+Docker is the easiest way to deploy the alerter — no Python installation needed, works on any system that runs Docker.
+
+### 1. Create your configuration
+
+Create a folder for the project and add two files:
+
+**config.yaml** — your alerter settings (copy from the [example config](config.yaml) and edit):
+
+```yaml
+country: "de/de"            # your Uniqlo country code
+schedule:
+  interval_minutes: 60
+filters:
+  min_discount_pct: 20
+# ... see config.yaml for all options
+```
+
+**.env** — your secrets (mail/Telegram credentials):
+
+```env
+SMTP_USERNAME=you@gmail.com
+SMTP_PASSWORD=your-app-password
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=987654321
+```
+
+### 2. Start with Docker Compose
+
+Create a `docker-compose.yml` in the same folder (or copy the one from this repo):
+
+```yaml
+services:
+  uniqlo-alerter:
+    image: kequach/uniqlo-sales-alerter:latest
+    container_name: uniqlo-alerter
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - alerter-state:/app/data
+    env_file:
+      - .env
+    environment:
+      - STATE_FILE=/app/data/.seen_variants.json
+
+volumes:
+  alerter-state:
+```
+
+Then start it:
+
+```bash
+docker compose up -d
+```
+
+The alerter is now running in the background. You can view the logs with `docker compose logs -f`.
+
+### 3. Update to the latest version
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### 4. Quick test
+
+To run a one-off preview without starting the background service:
+
+```bash
+docker run --rm \
+  -v ./config.yaml:/app/config.yaml:ro \
+  --env-file .env \
+  kequach/uniqlo-sales-alerter:latest \
+  python -m uniqlo_sales_alerter --preview-cli
+```
+
+> **Note:** The alerter keeps track of which deals it has already notified you about in a state file (`.seen_variants.json`). In the Docker Compose setup above, this file is stored in a named volume (`alerter-state`) so it survives container restarts and updates.
+
+---
+
 ## Deployment on Linux (Raspberry Pi / VPS)
 
 You can run the alerter as a systemd service so it starts automatically on boot, restarts on failure, and keeps running in the background.

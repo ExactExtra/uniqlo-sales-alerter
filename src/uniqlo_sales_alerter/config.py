@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
-_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+_DEFAULT_CONFIG_PATH = Path.cwd() / "config.yaml"
 
 
 def _resolve_env_vars(value: object) -> object:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import parse_qs, urlparse
@@ -24,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 _IN_STOCK_STATUSES = frozenset({"IN_STOCK", "LOW_STOCK"})
 _MAX_STOCK_CONCURRENCY = 10
-_DEFAULT_STATE_PATH = Path(__file__).resolve().parents[3] / ".seen_variants.json"
+_DEFAULT_STATE_PATH = Path(
+    os.environ.get("STATE_FILE", Path.cwd() / ".seen_variants.json"),
+)
 
 
 class _WatchedVariant(NamedTuple):
