@@ -639,7 +639,7 @@ class TestSaleCheckerCheck:
     async def test_state_file_format(
         self, sale_config: AppConfig, tmp_path: Path,
     ):
-        """The state file contains a JSON object with variant keys as product:color:size:discount."""
+        """The state file contains variant keys as product:color:size:discount."""
         state_file = tmp_path / ".seen_variants.json"
         products = [_product(_raw("E001", sizes=["M"]))]
 

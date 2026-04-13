@@ -592,24 +592,6 @@ python -m pytest tests/ -v           # run tests
 python -m ruff check src/ tests/     # lint
 ```
 
-### CI/CD
-
-A GitHub Actions workflow (`.github/workflows/docker-publish.yml`) runs on every push to `main`:
-
-1. **Test** — installs dependencies, runs the full test suite, and lints.
-2. **Build & push** — builds a multi-platform Docker image (`linux/amd64` + `linux/arm64`) and pushes it to Docker Hub.
-
-Images are tagged with `latest`, the branch name, and the commit SHA.
-
-The pipeline requires two repository secrets:
-
-| Secret | Value |
-|--------|-------|
-| `DOCKERHUB_USERNAME` | Your Docker Hub username |
-| `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://docs.docker.com/security/for-developers/access-tokens/) |
-
-Set these in **Settings → Secrets and variables → Actions** on your GitHub repository.
-
 ### Project structure
 
 ```
