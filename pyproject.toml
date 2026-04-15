@@ -1,6 +1,6 @@
 [project]
 name = "uniqlo-sales-alerter"
-version = "1.1.0"
+version = "1.2.0"
 description = "Monitors Uniqlo sales and sends notifications when items match your criteria"
 readme = "README.md"
 license = "MIT"
