@@ -72,9 +72,9 @@ _ENV_MAP: list[tuple[str, list[str], str]] = [
     ("TELEGRAM_BOT_TOKEN",          ["notifications", "channels", "telegram", "bot_token"], "str"),
     ("TELEGRAM_CHAT_ID",            ["notifications", "channels", "telegram", "chat_id"],   "str"),
     # -- quiet hours --
-    ("QUIET_HOURS_ENABLED",         ["quiet_hours", "enabled"],                              "bool"),
-    ("QUIET_HOURS_START",           ["quiet_hours", "start"],                                "str"),
-    ("QUIET_HOURS_END",             ["quiet_hours", "end"],                                  "str"),
+    ("QUIET_HOURS_ENABLED",         ["quiet_hours", "enabled"],                             "bool"),
+    ("QUIET_HOURS_START",           ["quiet_hours", "start"],                               "str"),
+    ("QUIET_HOURS_END",             ["quiet_hours", "end"],                                 "str"),
     # -- email / SMTP --
     ("EMAIL_ENABLED",               ["notifications", "channels", "email", "enabled"],      "bool"),
     ("SMTP_HOST",                   ["notifications", "channels", "email", "smtp_host"],    "str"),
