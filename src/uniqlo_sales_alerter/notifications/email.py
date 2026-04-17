@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import TYPE_CHECKING
@@ -92,8 +93,12 @@ class EmailNotifier:
     """Sends deal notifications via SMTP email."""
 
     def __init__(self, config: EmailChannelConfig, *, server_url: str = "") -> None:
-        self._config = config
-        self._server_url = server_url
+        import os
+
+    # Override config with environment variables (GitHub Actions)
+    config.smtp_user = os.getenv("EMAIL_USER") or config.smtp_user
+    config.smtp_password = os.getenv("EMAIL_PASS") or config.smtp_password
+    config.from_address = os.getenv("EMAIL_USER") or config.from_address
 
     def is_enabled(self) -> bool:
         return (
