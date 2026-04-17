@@ -5,3 +5,4 @@ aiosmtplib
 httpx
 pydantic
 PyYAML
+ruamel.yaml
