@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+apscheduler
+aiosmtplib
+httpx
+pydantic
