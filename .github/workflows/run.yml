@@ -26,5 +26,12 @@ jobs:
           cd src
           python -m uniqlo_sales_alerter
         env:
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_ENABLED: "true"
+          SMTP_HOST: "smtp.gmail.com"
+          SMTP_PORT: "587"
+          SMTP_USE_TLS: "true"
+          
+          SMTP_USER: ${{ secrets.EMAIL_USER }}
+          SMTP_PASSWORD: ${{ secrets.EMAIL_PASS }}
+          SMTP_FROM: ${{ secrets.EMAIL_USER }}
+          SMTP_TO: ${{ secrets.TO_EMAIL }}
