@@ -4,3 +4,4 @@ apscheduler
 aiosmtplib
 httpx
 pydantic
+PyYAML
