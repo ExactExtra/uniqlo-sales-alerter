@@ -11,7 +11,7 @@ uniqlo:
   country: "sg/en"
 
   # How often to poll the Uniqlo API (in minutes)
-  check_interval_minutes: 60
+  check_interval_minutes: 720
 
   # Optional: sale category path IDs to fetch from.
   # Some countries (notably Singapore) organise their sale items into
@@ -80,9 +80,9 @@ quiet_hours:
   # Useful for avoiding overnight checks.  Uses local system time.
   # Times are in 24-hour HH:MM format; the window may cross midnight
   # (e.g. start: "23:00", end: "06:00").
-  enabled: false
-  start: "01:00"
-  end: "08:00"
+  enabled: true
+  start: "02:00"
+  end: "010:00"
 
 notifications:
   # Preview modes — generate local previews of matched deals.
