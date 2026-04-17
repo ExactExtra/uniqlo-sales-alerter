@@ -8,10 +8,10 @@ uniqlo:
   #   Limited countries show sale-flagged items but don't expose the
   #   original price, so discount percentages are unavailable and
   #   min_sale_percentage is ignored.
-  country: "de/de"
+  country: "sg/en"
 
   # How often to poll the Uniqlo API (in minutes)
-  check_interval_minutes: 30
+  check_interval_minutes: 60
 
   # Optional: sale category path IDs to fetch from.
   # Some countries (notably Singapore) organise their sale items into
@@ -24,13 +24,12 @@ uniqlo:
   # Singapore paths (as of 2026):
   #   sale_paths: ["5855", "5856", "5857", "5858"]
   #   5855 = all sale, 5856 = men, 5857 = women, 5858 = kids
-  sale_paths: []
+  sale_paths: ["5855", "5856", "5857", "5858"]
 
 filters:
   # Which genders to include. Valid values: men, women, unisex, kids, baby
   gender:
   - MEN
-  - WOMEN
   - UNISEX
 
   # Minimum discount percentage to surface a deal. Default: 50
@@ -52,12 +51,11 @@ filters:
     clothing:
     - M
     pants:
+    - 28inch
+    - 29inch
     - 30inch
-    - 31inch
-    - 32inch
     shoes:
-    - '42'
-    - '42.5'
+    - '40'
     one_size: true
 
   # Specific product variants (colour + size) to always include when in
@@ -65,32 +63,7 @@ filters:
   # URL — product ID, colour, size, and price group are extracted
   # automatically.  Human-readable names (product name, colour name, size
   # name) are resolved from the API on startup and saved back here.
-  watched_variants:
-  - url: 
-      https://www.uniqlo.com/de/de/products/E483045-000/00?colorDisplayCode=70&sizeDisplayCode=003
-    id: E483045-000
-    price_group: '00'
-    name: Satin Rock (lang)
-    color: '70'
-    color_name: HELLES LILA
-    size: '003'
-    size_name: S
-  - url: 
-      https://www.uniqlo.com/de/de/products/E483049-000/00?colorDisplayCode=39&sizeDisplayCode=004
-    id: E483049-000
-    price_group: '00'
-    name: Satin Bluse (oversized, kurz, Halbarm)
-    color: '39'
-    color_name: DUNKELBRAUN
-    size: '004'
-    size_name: M
-  ignored_products:
-  - id: E481518-000
-    url: https://www.uniqlo.com/de/de/products/E481518-000/00
-    name: Bundfaltenhose (Wide Fit, Jersey Velours, lang)
-  - id: E485255-000
-    url: https://www.uniqlo.com/de/de/products/E485255-000/00
-    name: ZOOTROPOLIS UT T-Shirt
+  watched_variants: []
   # DEPRECATED — use watched_variants above instead.  Any URLs listed here
   # are automatically migrated to watched_variants on startup and this list
   # is cleared.  The FILTER_WATCHED_URLS env var still works the same way.
@@ -133,7 +106,7 @@ notifications:
       chat_id: ""
 
     email:
-      enabled: false
+      enabled: true
       smtp_host: "smtp.gmail.com"
       smtp_port: 587
       use_tls: true
