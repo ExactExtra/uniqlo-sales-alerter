@@ -93,18 +93,17 @@ class EmailNotifier:
     """Sends deal notifications via SMTP email."""
 
     def __init__(self, config: EmailChannelConfig, *, server_url: str = "") -> None:
-        import os
 
     # Override config with environment variables (GitHub Actions)
-    config.smtp_user = os.getenv("EMAIL_USER") or config.smtp_user
-    config.smtp_password = os.getenv("EMAIL_PASS") or config.smtp_password
-    config.from_address = os.getenv("EMAIL_USER") or config.from_address
+        config.smtp_user = os.getenv("EMAIL_USER") or config.smtp_user
+        config.smtp_password = os.getenv("EMAIL_PASS") or config.smtp_password
+        config.from_address = os.getenv("EMAIL_USER") or config.from_address
     
-    if os.getenv("TO_EMAIL"):
-        config.to_addresses = [os.getenv("TO_EMAIL")]
+        if os.getenv("TO_EMAIL"):
+            config.to_addresses = [os.getenv("TO_EMAIL")]
 
-    self._config = config
-    self._server_url = server_url
+        self._config = config
+        self._server_url = server_url
 
     def is_enabled(self) -> bool:
         return (
