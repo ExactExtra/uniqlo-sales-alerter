@@ -24,7 +24,7 @@ from ruamel.yaml.comments import CommentedSeq
 logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
-_DEFAULT_CONFIG_PATH = Path.cwd() / "config.yaml"
+_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
 
 
 def _resolve_env_vars(value: object) -> object:
