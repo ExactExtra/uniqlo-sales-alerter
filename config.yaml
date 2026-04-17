@@ -110,7 +110,7 @@ notifications:
       smtp_host: "smtp.gmail.com"
       smtp_port: 587
       use_tls: true
-      smtp_user: ""
-      smtp_password: ""
-      from_address: ""
+      smtp_user: ${EMAIL_USER}
+      smtp_password: ${EMAIL_PASS}
+      from_address: ${EMAIL_USER}
       to_addresses: []
