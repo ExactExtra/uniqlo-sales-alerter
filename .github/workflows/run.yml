@@ -22,9 +22,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run script
-        run: |
-          cd src
-          python -m uniqlo_sales_alerter
+        run: python -m uniqlo_sales_alerter
         env:
           EMAIL_ENABLED: "true"
           SMTP_HOST: "smtp.gmail.com"
